@@ -1,3 +1,4 @@
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from flask_restful import Resource
 from flask import request
 import mysql.connector
@@ -30,9 +31,11 @@ class RecipeResource(Resource) :
         try :
             connection = get_connection()
 
-            query = '''select *
-                        from recipe
-                        where id = %s;'''
+            query = '''select r.*, u.username
+                    from recipe r
+                    join user u
+                    	on r.user_id = u.id
+                    where r.id = %s;;'''
             
             record = (recipe_id, )  # 무조건 튜플 형태로 받아야해서 , 뒤가 비어있는 것.
 
@@ -62,13 +65,16 @@ class RecipeResource(Resource) :
             return {'result' : 'success', 'item' : {}}
         else :
             return {'result' : 'success', 'item' : result_list[0]}
-
+    
+    @jwt_required()
     def put(self, recipe_id) :
 
         # 1. 클라이언트로부터 데이터를 받아온다
         print(recipe_id)
         # body에 있는 json 데이터를 받아온다.
         data = request.get_json()
+
+        user_id = get_jwt_identity()
         # 2. 데이터베이스에 update한다.
         try :
             connection = get_connection()
@@ -77,10 +83,10 @@ class RecipeResource(Resource) :
                         set name = %s, description =%s,
 		                num_of_servings = %s, cook_time = %s,
                         directions = %s, is_publish = %s
-                        where id = %s;'''
+                        where id = %s and user_id = %s;'''
             
             recode = ( data['name'], data['description'], data['num_of_servings'], data['cook_time'],
-                       data['directions'], data['is_publish'] , recipe_id)
+                       data['directions'], data['is_publish'] , recipe_id , user_id)
 
             cursor = connection.cursor()
 
@@ -97,19 +103,22 @@ class RecipeResource(Resource) :
         
         return {'result' : 'success'}
     
+    @jwt_required()
     def delete(self, recipe_id) :
         
         # 1. 클라이언트로부터 데이터를 받아온다.
         print(recipe_id)
+
+        user_id = get_jwt_identity()
 
         # 2.  DB에서 삭제한다.
         try :
             connection = get_connection()
 
             query = '''delete from recipe
-                        where id = %s;'''
+                        where id = %s and user_id = %s;'''
             
-            recode = (recipe_id, )
+            recode = (recipe_id, user_id)
 
             cursor = connection.cursor()
 
@@ -133,6 +142,7 @@ class RecipeResource(Resource) :
 
 class RecipeListResource(Resource) :
     
+    @jwt_required()
     def post(self) : #post라는 함수는 우리가 만든게 아니다. 플라스크 만든 사람이 만든걸 상속받은 것이다.
         # 포스트로 요청한것을 처리하는 코드 작성을 우리가!!
 
@@ -146,9 +156,13 @@ class RecipeListResource(Resource) :
         # }
 
         # 1.클라이언트가 보낸 데이터를 받아온다.
+
         data = request.get_json()
+
+        # 1-1 ㅎㅔ더에 담긴 JWT토큰을 받아온다.
+        user_id = get_jwt_identity()
         
-        print(data)
+        print(user_id)
         # 2. 받아온 데이터를 DB에 저장한다.
         try :
             # 2-1. 데이터 베이스를 연결한다.
@@ -158,13 +172,14 @@ class RecipeListResource(Resource) :
             ######### 무조건 중요! 컬럼과 매칭되는 데이터만 %s로 바꿔준다.
             query = '''insert into recipe
                         (name, description, num_of_servings, cook_time,
-	                        directions, is_publish)
+	                        directions, is_publish, user_id)
                         values
-                        (%s, %s, %s, %s, %s, %s);'''
+                        (%s, %s, %s, %s, %s, %s, %s);'''
             
             # 2-3. 쿼리에 매칭되는 변수 처리! 중요!! 튜플로 처리해준다!!(데이터 변경 없음!)
             record = (data['name'], data['description'], 
-                      data['num_of_servings'], data['cook_time'], data['directions'], data['is_publish'])
+                      data['num_of_servings'], data['cook_time'],
+                      data['directions'], data['is_publish'], user_id)
             
             # 2-4. 커서를 가져온다.
             cursor = connection.cursor()
@@ -197,8 +212,11 @@ class RecipeListResource(Resource) :
             
             connection = get_connection()
             #     쿼리문 만들기
-            query = '''select * from recipe
-                    order by created_at desc;'''
+            query = '''select r.*, u.username
+                    from recipe r
+                    join user u
+	                    on r.user_id = u.id
+                    where is_publish = 1;;'''
             # 2-2. 변수 처리할 부분은 변수 처리한다.
 
             # 2-3. 커서를 가져온다.
